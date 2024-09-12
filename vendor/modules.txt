@@ -1,0 +1,13 @@
+# github.com/go-audio/audio v1.0.0
+## explicit
+github.com/go-audio/audio
+# github.com/go-audio/riff v1.0.0
+## explicit; go 1.12
+github.com/go-audio/riff
+# github.com/go-audio/wav v1.1.0
+## explicit; go 1.13
+github.com/go-audio/wav
+# github.com/veandco/go-sdl2 v0.4.40
+## explicit; go 1.15
+github.com/veandco/go-sdl2/_libs
+github.com/veandco/go-sdl2/sdl
