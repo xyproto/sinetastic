@@ -3,7 +3,7 @@
 Example program that can:
 
 * Generate audio.
-* Play audio (sequentially, not mixed) by using SDL2.
+* Play audio using SDL2, both sequentially and mixed.
 * Write generated audio to .wav files.
 
 Tested on macOS.
