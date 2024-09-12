@@ -1,4 +1,4 @@
-module github.com/xyproto/sinetatic
+module github.com/xyproto/sinetastic
 
 go 1.23.1
 
