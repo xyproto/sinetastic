@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -9,17 +10,15 @@ import (
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"github.com/veandco/go-sdl2/sdl"
+	"github.com/veandco/go-sdl2/mix"
 )
 
 const (
-	frequency1   = 220.0
-	frequency2   = 110.0
-	duration     = 2 * time.Second
-	sampleRate44 = 44100
-	sampleRate48 = 48000
-	bitDepth     = 16
-	waveform     = "sine"
+	frequency1 = 220.0
+	frequency2 = 110.0
+	duration   = 2 * time.Second
+	sampleRate = 44100
+	bitDepth   = 16
 )
 
 func GenerateSineWave(freq float64, sampleRate int, duration time.Duration) []int16 {
@@ -35,12 +34,12 @@ func GenerateSineWave(freq float64, sampleRate int, duration time.Duration) []in
 	return sineWave
 }
 
-func WriteWaveToFile(filename string, wave []int16, sampleRate int) error {
-	file, err := os.Create(filename)
+func WriteSineWaveToTempFile(wave []int16, sampleRate int) (string, error) {
+	tmpfile, err := ioutil.TempFile("", "sine_wave_*.wav")
 	if err != nil {
-		return fmt.Errorf("error creating file: %v", err)
+		return "", fmt.Errorf("failed to create temp file: %v", err)
 	}
-	defer file.Close()
+	defer tmpfile.Close()
 
 	buffer := &audio.IntBuffer{
 		Data:           make([]int, len(wave)),
@@ -52,85 +51,85 @@ func WriteWaveToFile(filename string, wave []int16, sampleRate int) error {
 		buffer.Data[i] = int(sample)
 	}
 
-	encoder := wav.NewEncoder(file, sampleRate, bitDepth, 1, 1)
-	defer encoder.Close()
-
+	encoder := wav.NewEncoder(tmpfile, sampleRate, bitDepth, 1, 1)
 	if err := encoder.Write(buffer); err != nil {
-		return fmt.Errorf("error writing to WAV: %v", err)
+		return "", fmt.Errorf("failed to write WAV data: %v", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return "", fmt.Errorf("failed to close WAV encoder: %v", err)
 	}
 
-	return nil
+	return tmpfile.Name(), nil
 }
 
-func PlaySineWaveSDL(deviceID sdl.AudioDeviceID, wave []int16) error {
-	byteData := make([]byte, len(wave)*2)
-	for i := 0; i < len(wave); i++ {
-		byteData[2*i] = byte(wave[i] & 0xff)
-		byteData[2*i+1] = byte((wave[i] >> 8) & 0xff)
+func PlaySineWavesSimultaneously(file1, file2 string) error {
+	if err := mix.OpenAudio(sampleRate, mix.DEFAULT_FORMAT, 2, 4096); err != nil {
+		return fmt.Errorf("failed to open SDL2_mixer audio: %v", err)
+	}
+	defer mix.CloseAudio()
+
+	chunk1, err := mix.LoadWAV(file1)
+	if err != nil {
+		return fmt.Errorf("failed to load WAV file1: %v", err)
+	}
+	defer chunk1.Free()
+
+	var chunk2 *mix.Chunk
+	if file2 != "" {
+		chunk2, err = mix.LoadWAV(file2)
+		if err != nil {
+			return fmt.Errorf("failed to load WAV file2: %v", err)
+		}
+		defer chunk2.Free()
 	}
 
-	sdl.ClearQueuedAudio(deviceID)
-
-	if err := sdl.QueueAudio(deviceID, byteData); err != nil {
-		return fmt.Errorf("Failed to queue audio: %v", err)
+	fmt.Println("Playing first sine wave...")
+	if _, err := chunk1.Play(-1, 0); err != nil {
+		return fmt.Errorf("failed to play WAV file1: %v", err)
 	}
 
-	sdl.PauseAudioDevice(deviceID, false)
+	if chunk2 != nil {
+		fmt.Println("Playing second sine wave...")
+		if _, err := chunk2.Play(-1, 0); err != nil {
+			return fmt.Errorf("failed to play WAV file2: %v", err)
+		}
+	}
 
-	// Wait until the audio is done playing
 	time.Sleep(duration)
 
 	return nil
 }
 
 func main() {
-	if err := sdl.Init(sdl.INIT_AUDIO); err != nil {
-		log.Fatalf("Failed to initialize SDL2: %v", err)
-	}
-	defer sdl.Quit()
+	fmt.Println("Generating sine waves")
+	sineWave1 := GenerateSineWave(frequency1, sampleRate, duration)
+	sineWave2 := GenerateSineWave(frequency2, sampleRate, duration)
 
-	// Open the audio device once
-	spec := sdl.AudioSpec{
-		Freq:     int32(sampleRate44), // Start with 44.1 kHz
-		Format:   sdl.AUDIO_S16SYS,    // 16-bit signed
-		Channels: 1,                   // Mono
-		Samples:  4096,                // Buffer size
-	}
-
-	deviceID, err := sdl.OpenAudioDevice("", false, &spec, nil, 0)
+	fmt.Println("Writing sine waves to temporary files")
+	tmpfile1, err := WriteSineWaveToTempFile(sineWave1, sampleRate)
 	if err != nil {
-		log.Fatalf("Failed to open SDL audio device: %v", err)
+		log.Fatalf("Error writing 220 Hz sine wave: %v", err)
 	}
-	defer sdl.CloseAudioDevice(deviceID)
+	defer os.Remove(tmpfile1)
 
-	// Generate 220 Hz sine wave at 44.1 kHz
-	fmt.Printf("Playing %.0f Hz sine wave at 44.1 kHz\n", frequency1)
-	sineWave44 := GenerateSineWave(frequency1, sampleRate44, duration)
-	if err := PlaySineWaveSDL(deviceID, sineWave44); err != nil {
-		log.Fatalf("Failed to play audio: %v", err)
+	tmpfile2, err := WriteSineWaveToTempFile(sineWave2, sampleRate)
+	if err != nil {
+		log.Fatalf("Error writing 110 Hz sine wave: %v", err)
 	}
+	defer os.Remove(tmpfile2)
 
-	// Change sample rate for the second sine wave
-	spec.Freq = int32(sampleRate48)
-
-	// Clear previously queued audio
-	sdl.ClearQueuedAudio(deviceID)
-
-	fmt.Printf("Playing %.0f Hz sine wave at 48 kHz\n", frequency2)
-	sineWave48 := GenerateSineWave(frequency2, sampleRate48, duration)
-	if err := PlaySineWaveSDL(deviceID, sineWave48); err != nil {
-		log.Fatalf("Failed to play audio: %v", err)
+	fmt.Println("Playing first sine wave (220 Hz)")
+	if err := PlaySineWavesSimultaneously(tmpfile1, ""); err != nil {
+		log.Fatalf("Error playing 220 Hz sine wave: %v", err)
 	}
 
-	filename44 := fmt.Sprintf("%dHz_%s_44k.wav", int(frequency1), waveform)
-	fmt.Println("Writing sine wave at 44.1 kHz to", filename44)
-	if err := WriteWaveToFile(filename44, sineWave44, sampleRate44); err != nil {
-		log.Fatalf("Failed to write %s: %v", filename44, err)
+	fmt.Println("Playing second sine wave (110 Hz)")
+	if err := PlaySineWavesSimultaneously(tmpfile2, ""); err != nil {
+		log.Fatalf("Error playing 110 Hz sine wave: %v", err)
 	}
 
-	filename48 := fmt.Sprintf("%dHz_%s_48k.wav", int(frequency2), waveform)
-	fmt.Println("Writing sine wave at 48 kHz to", filename48)
-	if err := WriteWaveToFile(filename48, sineWave48, sampleRate48); err != nil {
-		log.Fatalf("Failed to write %s: %v", filename48, err)
+	fmt.Println("Playing both sine waves together")
+	if err := PlaySineWavesSimultaneously(tmpfile1, tmpfile2); err != nil {
+		log.Fatalf("Error playing sine waves simultaneously: %v", err)
 	}
 }
