@@ -1,5 +1,9 @@
 # sinetastic
 
-Example use of SDL2 to generate and play audio from Go (sequentially, not mixed), and also write the audio to .wav files.
+Example program that can:
+
+* Generate audio.
+* Play audio (sequentially, not mixed) by using SDL2.
+* Write generated audio to .wav files.
 
 Tested on macOS.
